@@ -27,14 +27,21 @@
 
 ## 🚀 시작하기 (Getting Started)
 
-프로젝트를 클론하거나 소스 코드를 직접 실행, 혹은 단일 실행 파일로 빌드할 수 있습니다.
+### 1. 일반 사용자 (배포용 실행 파일 사용 시)
+- **요구 사항**: 없음 (Windows 10 / 11 환경이면 즉시 실행 가능)
+- **실행 방법**:
+  - 빌드된 단일 실행 파일(`sheet_metal_job_log.exe`)을 더블클릭하여 실행합니다.
+  - **별도의 Python 설치나 라이브러리 설치가 전혀 필요 없습니다.**
 
-### 요구 사항 (Prerequisites)
-- Python 3.8 이상
-- `openpyxl` (엑셀 파일 처리)
-- `pyinstaller` (실행 파일 빌드 시 필요)
+### 2. 개발자 및 재빌드 환경 (소스 코드 수정/빌드 시)
+소스 코드를 직접 실행하거나 새로운 EXE 파일로 재빌드하려는 경우에만 아래 요구 사항이 필요합니다.
 
-### 소스 코드 실행
+- **필수 개발 환경**:
+  - Python 3.8 이상
+  - `openpyxl` (엑셀 파일 처리 라이브러리)
+  - `pyinstaller` (실행 파일 빌드 도구)
+
+#### 소스 코드 직접 실행
 ```bash
 git clone <repository-url>
 cd sheet_metal_job_log
@@ -42,8 +49,7 @@ pip install openpyxl
 python src/main.py
 ```
 
-### 실행 파일(.exe) 빌드 방법
-프로젝트에 포함된 빌드 스크립트를 사용하여 Windows용 단일 실행 파일을 생성할 수 있습니다.
+#### 실행 파일(.exe) 빌드 방법
 ```bash
 python build_exe.py
 ```
