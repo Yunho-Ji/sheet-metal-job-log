@@ -1,0 +1,30 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller
+#  Typically prevent placing building files under source control
+build/
+dist/
+*.exe
+*.spec
+
+# Local Database (Contains test data)
+work_log.db
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Archives
+*.zip
+*.7z
+*.rar
+
+
+# IDE files
+.vscode/
+.idea/
