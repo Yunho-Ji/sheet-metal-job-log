@@ -23,6 +23,11 @@ class MetalJobLogApp(tk.Tk):
         self.section_font = ("맑은 고딕", 11, "bold")
         self.label_font = ("맑은 고딕", 10)
         
+        # 상태 변수 초기화
+        self.keep_worker = False
+        self.saved_worker = ""
+        self.duration_in_minutes = False
+        
         self.setup_styles()
         self.create_widgets()
         
@@ -85,6 +90,9 @@ class MetalJobLogApp(tk.Tk):
         self.btn_excel = create_custom_button(btn_frame, "엑셀 내보내기 (A4 규격)", "#107C41", "#159B52", self.export_excel)
         self.btn_excel.pack(side="right", padx=5)
         
+        self.btn_help = create_custom_button(btn_frame, "[ ? ] 도움말", "#F59E0B", "#D97706", self.show_help_info, fg="#FFFFFF", active_fg="#FFFFFF")
+        self.btn_help.pack(side="right", padx=5)
+        
         main_container = ttk.Frame(self)
         main_container.pack(fill="both", expand=True, padx=15, pady=5)
         
@@ -142,7 +150,7 @@ class MetalJobLogApp(tk.Tk):
         self.tree.heading("id", text="")
         self.tree.heading("start", text="시작")
         self.tree.heading("end", text="완료")
-        self.tree.heading("duration", text="소요")
+        self.tree.heading("duration", text="소요 (시간)", command=self.toggle_duration_format)
         self.tree.heading("lot", text="로트번호 및 구분")
         self.tree.heading("product", text="제품명")
         self.tree.heading("process", text="공정 및 도변")
@@ -211,6 +219,7 @@ class MetalJobLogApp(tk.Tk):
         self.populate_tree(logs)
 
     def populate_tree(self, logs):
+        self.current_logs = logs # 현재 표시된 로그 저장
         for item in self.tree.get_children():
             self.tree.delete(item)
             
@@ -226,12 +235,67 @@ class MetalJobLogApp(tk.Tk):
                 
             tag = 'oddrow' if i % 2 != 0 else 'evenrow'
             
+            # 완료 시간 및 소요 시간 변환 처리
+            end_time_val = log.get("end_time", "")
+            if not end_time_val or end_time_val.strip() == "":
+                end_time_display = "작업 중"
+            else:
+                end_time_display = end_time_val
+                
+            duration_val = log.get("duration_time", "")
+            if not duration_val or duration_val.strip() == "" or duration_val == "작업 중":
+                duration_display = "작업 중"
+            else:
+                duration_display = self.convert_duration_format(duration_val, self.duration_in_minutes)
+            
             self.tree.insert("", "end", values=(
-                log["id"], log["start_time"], log["end_time"], log["duration_time"],
+                log["id"], log["start_time"], end_time_display, duration_display,
                 log["lot_number"] or "", log["product_name"] or "",
                 log["process_code"] or "", qty_fmt, log["remarks"] or "",
                 log["work_date"], log["worker_name"]
             ), tags=(tag,))
+
+    def toggle_duration_format(self):
+        """소요 시간 표시 형식을 토글합니다. (시간 분 <-> 분) 주석은 한국어입니다."""
+        self.duration_in_minutes = not self.duration_in_minutes
+        new_text = "소요 (분)" if self.duration_in_minutes else "소요 (시간)"
+        self.tree.heading("duration", text=new_text)
+        if hasattr(self, 'current_logs'):
+            self.populate_tree(self.current_logs)
+
+    def convert_duration_format(self, duration_str, to_minutes=False):
+        """소요 시간 문자열을 지정된 형식(시간/분 또는 분)으로 변환합니다. 주석은 한국어입니다."""
+        if not duration_str:
+            return ""
+        if duration_str == "작업 중":
+            return "작업 중"
+            
+        import re
+        hours = 0
+        minutes = 0
+        
+        hour_match = re.search(r'(\d+)\s*시간', duration_str)
+        min_match = re.search(r'(\d+)\s*분', duration_str)
+        
+        if hour_match:
+            hours = int(hour_match.group(1))
+        if min_match:
+            minutes = int(min_match.group(1))
+            
+        total_mins = hours * 60 + minutes
+        
+        if to_minutes:
+            if total_mins > 0:
+                return f"{total_mins}분"
+            return ""
+        else:
+            if hours > 0 and minutes > 0:
+                return f"{hours}시간 {minutes}분"
+            elif hours > 0:
+                return f"{hours}시간"
+            elif minutes > 0:
+                return f"{minutes}분"
+            return ""
 
     def open_add_dialog(self):
         dialog = JobLogDialog(self)
@@ -326,3 +390,22 @@ class MetalJobLogApp(tk.Tk):
             messagebox.showinfo("저장 완료", f"작업일지 엑셀 파일이 성공적으로 생성되었습니다.\n경로: {file_path}")
         except Exception as e:
             messagebox.showerror("저장 오류", f"엑셀 생성에 실패하였습니다.\n오류 정보: {str(e)}")
+
+    def show_help_info(self):
+        help_text = (
+            "💡 [ 생산1팀 작업일지 시스템 핵심 꿀팁 ] 💡\n\n"
+            "1. 더블클릭 수정/삭제\n"
+            "   목록에 등록된 작업을 더블클릭하시면 수정 또는 삭제할 수 있습니다.\n\n"
+            "2. 소요 시간 단위 변경 (시간 ↔ 분)\n"
+            "   목록 맨 위 테이블 헤더의 '소요 (시간)' 글자를 마우스로 클릭해 보세요.\n"
+            "   1시간 30분 형태와 90분 형태가 클릭할 때마다 바로 바뀝니다!\n\n"
+            "3. 시간 입력 자동 완성 (: 생략 가능)\n"
+            "   시간을 입력하실 때 콜론(:) 없이 '830', '1530' 이라고만 치고 넘어가면,\n"
+            "   프로그램이 알아서 '08:30', '15:30'으로 변환해 드립니다.\n\n"
+            "4. 병행 작업 한 방에 나누기 (비율 자동 배분)\n"
+            "   하나의 긴 작업 시간에 여러 제품을 섞어서 작업하셨나요?\n"
+            "   기존 작업을 더블클릭하여 수정한 뒤, 창 하단의 [병행 작업 나누기] 버튼을 누르세요.\n"
+            "   제품명과 세트 수량만 툭툭 입력하시면, 5분 단위 현장 규칙에 맞춰서\n"
+            "   시간이 자동 계산되고 한 방에 여러 줄로 예쁘게 쪼개져 등록됩니다!"
+        )
+        messagebox.showinfo("도움말 및 이용 팁", help_text, parent=self)

@@ -4,6 +4,7 @@ import datetime
 import re
 import database
 from gui_components import create_custom_button, create_form_row
+from gui_split_dialog import SplitByRatioDialog
 
 class JobLogDialog(tk.Toplevel):
     def __init__(self, parent, log_data=None):
@@ -75,7 +76,13 @@ class JobLogDialog(tk.Toplevel):
         self.cb_day.bind("<<ComboboxSelected>>", self.update_weekday_label)
         
         # 2. 작업자
-        self.ent_worker = create_form_row(main_frame, "작업자 *", 2, self.label_font, width=25)
+        tk.Label(main_frame, text="작업자 *", bg="#FFFFFF", font=self.label_font).grid(row=2, column=0, sticky="w", pady=6)
+        self.ent_worker = ttk.Entry(main_frame, width=15)
+        self.ent_worker.grid(row=2, column=1, sticky="w", pady=6)
+        
+        self.var_keep_worker = tk.BooleanVar(value=self.parent.keep_worker)
+        self.chk_keep_worker = tk.Checkbutton(main_frame, text="작업자 고정", variable=self.var_keep_worker, bg="#FFFFFF", font=("맑은 고딕", 9))
+        self.chk_keep_worker.grid(row=2, column=2, sticky="w", padx=5, pady=6)
         
         # 구분선
         ttk.Separator(main_frame, orient="horizontal").grid(row=3, column=0, columnspan=3, sticky="ew", pady=10)
@@ -92,8 +99,8 @@ class JobLogDialog(tk.Toplevel):
         # 시간 변경 바인딩
         self.ent_start_time.bind("<KeyRelease>", self.on_time_changed)
         self.ent_end_time.bind("<KeyRelease>", self.on_time_changed)
-        self.ent_start_time.bind("<FocusOut>", self.on_time_changed)
-        self.ent_end_time.bind("<FocusOut>", self.on_time_changed)
+        self.ent_start_time.bind("<FocusOut>", self.on_time_focus_out)
+        self.ent_end_time.bind("<FocusOut>", self.on_time_focus_out)
         
         # 구분선
         ttk.Separator(main_frame, orient="horizontal").grid(row=7, column=0, columnspan=3, sticky="ew", pady=10)
@@ -124,6 +131,9 @@ class JobLogDialog(tk.Toplevel):
             self.btn_delete = create_custom_button(btn_frame, "내역 삭제", "#DC2626", "#EF4444", self.delete_log)
             self.btn_delete.pack(side="left", fill="x", expand=True, padx=4)
             
+            self.btn_split = create_custom_button(btn_frame, "병행 작업 나누기", "#1E3A8A", "#1D4ED8", self.open_split_dialog)
+            self.btn_split.pack(side="left", fill="x", expand=True, padx=4)
+            
             btn_close = create_custom_button(btn_frame, "취소", "#E2E8F0", "#CBD5E1", self.destroy, fg="#1E293B", active_fg="#1E293B")
             btn_close.pack(side="left", fill="x", expand=True, padx=(4, 0))
 
@@ -135,11 +145,15 @@ class JobLogDialog(tk.Toplevel):
             self.cb_day.set(f"{today.day:02d}")
             self.update_weekday_label()
             
-            if self.parent.tree.get_children():
+            # 작업자 고정이 설정된 경우 저장된 작업자명을 삽입
+            if self.parent.keep_worker and self.parent.saved_worker:
+                self.ent_worker.insert(0, self.parent.saved_worker)
+            # 고정되지 않았으나 기존 내역이 있는 경우 마지막 작업자를 가져옴 (worker 컬럼 인덱스 = 10)
+            elif self.parent.tree.get_children():
                 last_item = self.parent.tree.get_children()[0]
                 last_vals = self.parent.tree.item(last_item, "values")
-                if last_vals and len(last_vals) > 2:
-                    self.ent_worker.insert(0, last_vals[2])
+                if last_vals and len(last_vals) > 10:
+                    self.ent_worker.insert(0, last_vals[10])
         else:
             d = self.log_data
             try:
@@ -184,7 +198,13 @@ class JobLogDialog(tk.Toplevel):
         end_str = self.ent_end_time.get().strip()
         time_pattern = re.compile(r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$")
         
-        if time_pattern.match(start_str) and time_pattern.match(end_str):
+        # 시작 시간이 있고 완료 시간이 비어있는 경우 "작업 중"으로 표시
+        if time_pattern.match(start_str) and not end_str:
+            self.ent_duration.config(state="normal")
+            self.ent_duration.delete(0, tk.END)
+            self.ent_duration.insert(0, "작업 중")
+            self.ent_duration.config(state="readonly")
+        elif time_pattern.match(start_str) and time_pattern.match(end_str):
             duration = self.calculate_duration(start_str, end_str)
             self.ent_duration.config(state="normal")
             self.ent_duration.delete(0, tk.END)
@@ -194,6 +214,54 @@ class JobLogDialog(tk.Toplevel):
             self.ent_duration.config(state="normal")
             self.ent_duration.delete(0, tk.END)
             self.ent_duration.config(state="readonly")
+
+    def format_shortcut_time(self, time_str):
+        """숫자로만 입력된 단축 시간 표기를 HH:MM 형식으로 변환합니다. 주석은 한국어입니다."""
+        time_str = time_str.strip().replace(":", "")
+        if not time_str.isdigit():
+            return time_str
+            
+        length = len(time_str)
+        if length == 1:
+            h = int(time_str)
+            return f"{h:02d}:00"
+        elif length == 2:
+            h = int(time_str)
+            if 0 <= h < 24:
+                return f"{h:02d}:00"
+        elif length == 3:
+            h = int(time_str[0])
+            m = int(time_str[1:])
+            if 0 <= h < 24 and 0 <= m < 60:
+                return f"{h:02d}:{m:02d}"
+        elif length == 4:
+            h = int(time_str[:2])
+            m = int(time_str[2:])
+            if 0 <= h < 24 and 0 <= m < 60:
+                return f"{h:02d}:{m:02d}"
+        return time_str
+
+    def on_time_focus_out(self, event=None):
+        """시간 입력란에서 포커스가 나갈 때 단축 입력을 변환하고 소요시간을 갱신합니다. 주석은 한국어입니다."""
+        start_val = self.ent_start_time.get().strip()
+        end_val = self.ent_end_time.get().strip()
+        
+        # 시작 시간 자동 변환
+        if start_val:
+            formatted_start = self.format_shortcut_time(start_val)
+            if formatted_start != start_val:
+                self.ent_start_time.delete(0, tk.END)
+                self.ent_start_time.insert(0, formatted_start)
+                
+        # 완료 시간 자동 변환
+        if end_val:
+            formatted_end = self.format_shortcut_time(end_val)
+            if formatted_end != end_val:
+                self.ent_end_time.delete(0, tk.END)
+                self.ent_end_time.insert(0, formatted_end)
+                
+        # 소요 시간 계산 메서드 호출
+        self.on_time_changed()
 
     def calculate_duration(self, start_str, end_str):
         try:
@@ -269,10 +337,12 @@ class JobLogDialog(tk.Toplevel):
             self.ent_start_time.focus()
             return False
             
-        if not end or not time_pattern.match(end):
-            messagebox.showerror("입력 오류", "완료 시간을 HH:MM 형식으로 정확히 입력해 주세요. (예: 17:30)", parent=self)
-            self.ent_end_time.focus()
-            return False
+        # 완료 시간은 필수 입력에서 제외하되, 입력한 경우에만 형식을 검사함
+        if end:
+            if not time_pattern.match(end):
+                messagebox.showerror("입력 오류", "완료 시간을 HH:MM 형식으로 정확히 입력해 주세요. (예: 17:30)", parent=self)
+                self.ent_end_time.focus()
+                return False
             
         return True
 
@@ -285,6 +355,13 @@ class JobLogDialog(tk.Toplevel):
             quantity = int(qty_str) if qty_str else None
         except ValueError:
             quantity = qty_str
+            
+        # 작업자 고정 설정 저장
+        self.parent.keep_worker = self.var_keep_worker.get()
+        if self.parent.keep_worker:
+            self.parent.saved_worker = self.ent_worker.get().strip()
+        else:
+            self.parent.saved_worker = ""
             
         database.insert_log(
             self.get_selected_date_str(), self.ent_worker.get().strip(),
@@ -311,6 +388,13 @@ class JobLogDialog(tk.Toplevel):
         except ValueError:
             quantity = qty_str
             
+        # 작업자 고정 설정 저장
+        self.parent.keep_worker = self.var_keep_worker.get()
+        if self.parent.keep_worker:
+            self.parent.saved_worker = self.ent_worker.get().strip()
+        else:
+            self.parent.saved_worker = ""
+            
         database.update_log(
             self.log_data["id"], self.get_selected_date_str(),
             self.ent_worker.get().strip(), self.ent_start_time.get().strip(),
@@ -335,3 +419,44 @@ class JobLogDialog(tk.Toplevel):
         self.parent.load_data()
         messagebox.showinfo("성공", "작업 내역이 삭제되었습니다.", parent=self)
         self.destroy()
+
+    def open_split_dialog(self):
+        start_val = self.ent_start_time.get().strip()
+        end_val = self.ent_end_time.get().strip()
+        
+        if not start_val or not end_val or end_val == "작업 중":
+            messagebox.showwarning("입력 오류", "시작 시간과 완료 시간을 명확히 입력해야 분할이 가능합니다.", parent=self)
+            return
+            
+        try:
+            h1, m1 = map(int, start_val.split(':'))
+            h2, m2 = map(int, end_val.split(':'))
+            total_mins = (h2 * 60 + m2) - (h1 * 60 + m1)
+            if total_mins <= 0:
+                messagebox.showwarning("입력 오류", "소요 시간이 0분이거나 음수입니다.", parent=self)
+                return
+        except ValueError:
+            messagebox.showwarning("입력 오류", "시간 형식이 올바르지 않습니다.", parent=self)
+            return
+
+        # 현재 폼에 입력된 최신 데이터를 취합
+        qty_str = self.ent_qty.get().strip()
+        try:
+            qty_parsed = int(qty_str) if qty_str else 0
+        except:
+            qty_parsed = qty_str
+            
+        current_data = {
+            "id": self.log_data["id"],
+            "work_date": self.get_selected_date_str(),
+            "worker_name": self.ent_worker.get().strip(),
+            "start_time": start_val,
+            "end_time": end_val,
+            "lot_number": self.ent_lot.get().strip(),
+            "product_name": self.ent_product.get().strip(),
+            "process_code": self.ent_process.get().strip(),
+            "quantity": qty_parsed,
+            "remarks": self.ent_remarks.get().strip()
+        }
+        
+        dialog = SplitByRatioDialog(self, current_data, total_mins)
